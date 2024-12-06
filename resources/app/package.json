@@ -1,0 +1,11 @@
+{
+  "name": "GlPrinter",
+  "version": "1.0.6",
+  "private": true,
+  "main": "background.js",
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "express": "^4.18.1",
+    "node-sass": "^4.14.1"
+  }
+}

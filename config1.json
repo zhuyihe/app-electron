@@ -1,0 +1,6 @@
+
+{
+    "VUE_APP_HOST_NAME": "https://10.102.11.76",
+    "VUE_APP_UPDATE_PATH_NAME":"/printsoftware/resources.zip",
+    "VUE_APP_PATH_NAME": "/printsoftware/latest.yml"
+  }

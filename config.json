@@ -1,0 +1,6 @@
+
+{
+    "VUE_APP_HOST_NAME": "http://127.0.0.1:5500",
+    "VUE_APP_UPDATE_PATH_NAME":"/resources.zip",
+    "VUE_APP_PATH_NAME": "/latest.yml"
+  }

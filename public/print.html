@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en" id="printData">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Document</title>
+    <style>
+      body,
+      html {
+        padding: 0;
+        margin: 0;
+        font-size: 30px;
+      }
+
+      @page {
+        margin: 0px;
+      }
+    </style>
+  </head>
+
+  <body id="bd" style="font-family:SimSun;"></body>
+
+  <script>
+    const { ipcRenderer } = require("electron");
+    ipcRenderer.on("webview-print-render", (event, info) => {
+      // 执行渲染
+      console.log(info, "ccc");
+      // document.getElementById('bd').innerHTML=info.content
+      // console.log(event, info)
+      replaceHTML(info.content, () => {
+        if (info.parent == "win") {
+          ipcRenderer.send("webview-print-do");
+        } else {
+          //webview
+          ipcRenderer.sendToHost("webview-print-do");
+        }
+      });
+      // document.write(info.content);
+      // if (info.parent == "win") {
+      //   ipcRenderer.send("webview-print-do");
+      // } else {
+      //   //webview
+      //   ipcRenderer.sendToHost("webview-print-do");
+      // }
+    });
+    function replaceHTML(htmlString, callback) {
+      // 创建一个临时div元素来容纳HTML字符串
+      var virtualElement = document.createElement("html");
+      virtualElement.innerHTML = htmlString;
+      
+      // 获取head标签内容
+      var headContent = virtualElement.querySelector('head').innerHTML;
+
+      // 获取body标签内容
+      var bodyContent = virtualElement.querySelector('body').innerHTML;
+      document.head.innerHTML=headContent
+      document.body.innerHTML=bodyContent
+      virtualElement.remove()
+      // 调用回调函数
+      if (typeof callback === "function") {
+        callback();
+      }
+    }
+    ipcRenderer.on("htmlPrint", (event, message) => {
+      //接收响应
+      // document.querySelector('#container').innerHTML = content
+      // console.log(event, message, 'failureReason')
+      // document.write(message.html)
+
+      ipcRenderer.send("htmlPrinting"); //向webview所在页面的进程传达消息
+    });
+  </script>
+</html>

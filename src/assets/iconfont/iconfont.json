@@ -1,0 +1,23 @@
+{
+  "id": "3591633",
+  "name": "eletron",
+  "font_family": "iconfont",
+  "css_prefix_text": "icon-",
+  "description": "",
+  "glyphs": [
+    {
+      "icon_id": "6999238",
+      "name": "成功",
+      "font_class": "chenggong",
+      "unicode": "e62f",
+      "unicode_decimal": 58927
+    },
+    {
+      "icon_id": "14203782",
+      "name": "失败",
+      "font_class": "shibai",
+      "unicode": "e7b4",
+      "unicode_decimal": 59316
+    }
+  ]
+}
