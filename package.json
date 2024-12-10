@@ -1,6 +1,6 @@
 {
   "name": "GlPrinter",
-  "version": "1.0.7",
+  "version": "1.0.1",
   "private": true,
   "scripts": {
     "serve": "vue-cli-service serve",
@@ -30,7 +30,6 @@
     "express-validator": "^6.14.2",
     "js-yaml": "^4.1.0",
     "loadsh": "^0.0.4",
-    "node-sass": "^4.14.1",
     "sass-loader": "^7.3.1",
     "uuid": "^8.3.2",
     "vue": "^2.6.11"
