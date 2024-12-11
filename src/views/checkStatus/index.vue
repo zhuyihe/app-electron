@@ -381,6 +381,7 @@ export default {
 
       .notes-list {
         max-height: 186px;
+        min-height:100px;
         overflow-y: auto;
         padding-right: 5px;
 
