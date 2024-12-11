@@ -1,336 +1,492 @@
 <template>
-    <div
-        class="connectToweb"
-        v-loading="isUpdatte || isPartUpdatte"
-        :element-loading-text="loadingText"
-        element-loading-spinner="el-icon-loading"
-    >
-        当前版本：{{ version }}
-        <div class="tip">
-            <div>{{ printerStutas.msg }}</div>
-            <div>
-                <svg class="icon" aria-hidden="true" v-if="!printerStutas.type">
-                    <use xlink:href="#icon-shibai" />
-                </svg>
-                <svg class="icon" aria-hidden="true" v-else>
-                    <use xlink:href="#icon-chenggong" />
-                </svg>
-            </div>
+  <div class="check-status-container">
+    <!-- 状态卡片区域 -->
+    <div class="status-cards">
+      <!-- 版本信息卡片 -->
+      <div class="status-card version-card">
+        <div class="card-icon">
+          <i class="el-icon-info"></i>
         </div>
-        <!-- <el-button type="primay" @click="checkDartUpdate">点击更新</el-button> -->
-        <el-dialog
-            title="更新提示"
-            :visible.sync="dialogVisible"
-            width="500px"
-            :show-close="false"
-            :close-on-click-modal="false"
-            custom-class="updateDialog"
-        >
-            <div v-if="!isUpdatte">
-                <span style="font-weight: bold" class="spanicon"><i class="el-icon-warning warning"></i>检测到新版本，是否更新？</span>
-                <el-scrollbar style="height: 100%">
-                    <div class="releaseNotes" v-if="releaseNotes.length">
-                        <div v-for="(item, key) in releaseNotes" :key="key" class="releaseNotesItem">
-                            <span v-if="item">{{ key + 1 }}、{{ item }}</span>
-                        </div>
-                    </div>
-                </el-scrollbar>
-            </div>
-            <span slot="footer" class="dialog-footer" v-if="!isUpdatte">
-                <el-button @click="dialogVisible = false">稍后</el-button>
-                <el-button type="primary" @click="confirmUpdate">确 定</el-button>
-            </span>
-        </el-dialog>
-        <el-dialog
-            title="更新提示"
-            :visible.sync="dartdialogVisible"
-            width="500px"
-            :show-close="false"
-            :close-on-click-modal="false"
-            custom-class="updateDialog"
-        >
-            <div v-if="!isPartUpdatte">
-                <span style="font-weight: bold" class="spanicon"><i class="el-icon-warning warning"></i>检测到新版本，是否更新？</span>
-                <el-scrollbar style="height: 100%">
-                    <div class="releaseNotes" v-if="releaseNotes.length">
-                        <div v-for="(item, key) in releaseNotes" :key="key" class="releaseNotesItem">
-                            <span v-if="item">{{ key + 1 }}、{{ item }}</span>
-                        </div>
-                    </div>
-                </el-scrollbar>
-            </div>
-            <span slot="footer" class="dialog-footer" v-if="!isPartUpdatte">
-                <el-button @click="dartdialogVisible = false">稍后</el-button>
-                <el-button type="primary" @click="confirmpartUpdate">确 定</el-button>
-            </span>
-        </el-dialog>
+        <div class="card-content">
+          <div class="card-title">版本信息</div>
+          <div class="version-info">
+            <span class="version-number">{{ version }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 打印机状态卡片 -->
+      <div class="status-card printer-card" :class="{ 'is-success': printerStutas.type }">
+        <div class="card-icon">
+          <i :class="printerStutas.type ? 'el-icon-success' : 'el-icon-error'"></i>
+        </div>
+        <div class="card-content">
+          <div class="card-title">打印机状态</div>
+          <div class="printer-status">{{ printerStutas.msg }}</div>
+        </div>
+      </div>
     </div>
+
+    <!-- 更新对话框 -->
+    <el-dialog
+      :visible.sync="dartdialogVisible"
+      width="480px"
+      :show-close="false"
+      :close-on-click-modal="false"
+      custom-class="update-dialog"
+    >
+      <template slot="title">
+        <div class="dialog-title">
+          <i class="el-icon-news"></i>
+          <span>{{ isPartUpdatte ? '正在更新' : '发现新版本' }}</span>
+        </div>
+      </template>
+      <div v-if="!isPartUpdatte" class="update-content">
+        <!-- 版本对比 -->
+        <div class="version-compare">
+          <div class="version-box current">
+            <div class="version-label">当前版本</div>
+            <div class="version-value">{{ version }}</div>
+          </div>
+          <div class="version-arrow">
+            <i class="el-icon-arrow-right"></i>
+          </div>
+          <div class="version-box new">
+            <div class="version-label">最新版本</div>
+            <div class="version-value highlight">{{ updateVersion }}</div>
+          </div>
+        </div>
+
+        <!-- 更新内容 -->
+        <div class="update-notes">
+          <div class="notes-title">更新内容：</div>
+          <div class="notes-list">
+            <div v-for="(note, index) in filteredReleaseNotes" 
+                 :key="index" 
+                 class="note-item">
+              <i class="el-icon-check"></i>
+              <span>{{ note }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 更新进度 -->
+      <div v-else class="progress-content">
+        <div class="progress-icon">
+          <i :class="[
+            progressStatus === 'success' ? 'el-icon-success' : 'el-icon-loading',
+            'status-icon'
+          ]"></i>
+        </div>
+        <div class="progress-title">{{ progressStep }}</div>
+        <div class="progress-text">{{ progressMessage }}</div>
+        <el-progress 
+          :percentage="updateProgress"
+          :status="progressStatus"
+          :stroke-width="8"
+          class="update-progress"
+        ></el-progress>
+        <div class="progress-tip">{{ loadingText }}</div>
+      </div>
+
+      <div slot="footer" class="dialog-footer" v-if="!isPartUpdatte">
+        <el-button @click="dartdialogVisible = false">稍后更新</el-button>
+        <el-button type="primary" @click="confirmpartUpdate">立即更新</el-button>
+      </div>
+    </el-dialog>
+  </div>
 </template>
 
 <script>
-// import checkIoStutas from '@/mixins/checkIoStutas'
-// const  = require('node-native-printer')
-// import printer from 'node-native-printer'
-const remote = require('@electron/remote');
-import { ipcRenderer } from 'electron';
+import { ipcRenderer } from "electron";
+const remote = require("@electron/remote");
 
 export default {
-    name: 'connectToweb',
-    data() {
-        return {
-            ioStatus: {
-                msg: '请与客户端链接',
-                type: 'disconnect'
-            },
-            printerStutas: {
-                msg: '打印功能准备就绪',
-                type: true
-            },
-            printList: [],
-            isUpdatte: false,
-            loadingText: '加载中...',
-            percent: 0,
-            dialogVisible: false,
-            colors: [
-                { color: '#f56c6c', percentage: 20 },
-                { color: '#e6a23c', percentage: 40 },
-                { color: '#6f7ad3', percentage: 60 },
-                { color: '#1989fa', percentage: 80 },
-                { color: '#5cb87a', percentage: 100 }
-            ],
-            releaseNotes: [],
-            dartdialogVisible: false,
-            isPartUpdatte: false,
-            version: ''
-            // tip: '请与客户端链接'
-        };
+  name: "CheckStatus",
+
+  data() {
+    return {
+      version: "", // 当前版本号
+      updateVersion: "", // 新版本号
+      isUpdatte: false, // 是否正在更新
+      isPartUpdatte: false, // 是否正在增量更新
+      loadingText: "", // 加载提示文本
+      dartdialogVisible: false, // 更新对话框显示状态
+      releaseNotes: [], // 更新日志
+      updateProgress: 0, // 更新进度
+      progressStep: "", // 当前步骤
+      progressMessage: "", // 进度消息
+      printerStutas: {
+        msg: "打印功能准备就绪",
+        type: false,
+      },
+    };
+  },
+
+  computed: {
+    filteredReleaseNotes() {
+      return this.releaseNotes.filter(note => note);
     },
-    computed: {
-        customStatus() {
-            console.log(this.percent);
-            if (this.percent == 100) {
-                return 'success';
-            } else {
-                return 'exception';
-            }
+    progressStatus() {
+      return this.updateProgress >= 100 ? "success" : "warning";
+    },
+  },
+
+  created() {
+    this.init();
+  },
+
+  mounted() {
+    // 获取当前版本
+    this.version = remote.app.getVersion();
+  },
+
+  methods: {
+    init() {
+      // 监听增量更新消息
+      this.linstenerDartUpdate();
+      // 检查打印机状态
+      this.getPrintListHandle();
+    },
+
+    // 监听增量更新消息
+    linstenerDartUpdate() {
+      // 获取现有的监听器数量
+      const updateListeners = ipcRenderer.listenerCount('UpdatePartMsg');
+      const progressListeners = ipcRenderer.listenerCount('InstallProgress');
+
+      // 只有在没有监听器时才添加
+      if (updateListeners === 0) {
+        ipcRenderer.on('UpdatePartMsg', (event, arg) => {
+          console.log('收到更新消息:', arg);
+          const { flag, releaseNotes, updateVersion } = arg;
+          if (flag) {
+            this.dartdialogVisible = true;
+            this.releaseNotes = releaseNotes ? releaseNotes.split('\r\n') : [];
+            this.updateVersion = updateVersion;
+            // 重置进度
+            this.updateProgress = 0;
+            this.progressStep = '';
+            this.progressMessage = '';
+          }
+        });
+      }
+
+      if (progressListeners === 0) {
+        ipcRenderer.on('InstallProgress', (event, data) => {
+          this.isPartUpdatte = true;
+          this.updateProgress = data.progress || 0;
+          this.progressStep = data.step || '';
+          this.progressMessage = data.message || '';
+          this.loadingText = `${data.step}\n${data.message}`;
+        });
+      }
+    },
+
+    // 手动检查更新
+    checkDartUpdate() {
+      const { flag, releaseNotes, version } = ipcRenderer.sendSync("exist_update");
+      if (flag) {
+        this.dartdialogVisible = true;
+        this.releaseNotes = releaseNotes.split("\r\n");
+        this.updateVersion = version;
+      } else {
+        this.$message.info("当前已是最新版本");
+      }
+    },
+
+    // 确认更新
+    confirmpartUpdate() {
+      this.isPartUpdatte = true;
+      ipcRenderer.send("Sure");
+    },
+
+    // 获取打印机列表状态
+    getPrintListHandle() {
+      const data = this.$electronStore.get("printerList");
+        // 过滤可用打印机
+        const availablePrinters = data
+          ? data.filter((element) => element.status === 0)
+          : [];
+  
+        if (availablePrinters.length <= 0) {
+          this.printerStutas = {
+            msg: "打印服务异常,请检查打印机是否可用",
+            type: false,
+          };
+        } else {
+          this.printerStutas = {
+            msg: "打印功能准备就绪",
+            type: true,
+          };
         }
     },
-    // mixins: [checkIoStutas],
-    created() {
-        // this.update()
-        this.init();
-        
-    },
-    mounted() {
-        this.version = remote.app.getVersion();
-        //增量更新
-        // this.checkDartUpdate()
-        console.log(remote.app.getVersion(),ipcRenderer, 'aaa');
-       
-        // this.init()
-    },
-    methods: {
-        async init() {
-            // await this.linstenerIo()
-            // this.linstenerPrinter()
-            // this.togoPrint()
-            //全量更新
-            // this.linstenerUpdate()
-            // console.log(printer.defaultPrinterName(), 'printer')
-            this.linstenerDartUpdate();
-        },
-        linstenerDartUpdate() {
-            
-            console.log( ipcRenderer.on,' ipcRenderer.on')
-            ipcRenderer.on('UpdatePartMsg', (event, arg) => {
-                console.log(arg, 'arg');
-                let { flag, releaseNotes, updateVersion } = arg;
-                if (flag) {
-                    console.log(flag, releaseNotes, updateVersion);
-                    // this.isUpdatte = true
-                    this.dartdialogVisible = true;
-                    this.releaseNotes = releaseNotes.split('\r\n');
-                }
-            });
-        },
-        //增量更新
-        checkDartUpdate() {
-            let { flag, releaseNotes, updateVersion } = ipcRenderer.sendSync('exist_update');
-            console.log({ flag, releaseNotes, updateVersion }, 'checkDartUpdate');
-            if (flag) {
-                // this.isUpdatte = true
-                this.dartdialogVisible = true;
-                this.releaseNotes = releaseNotes.split('\r\n');
-            }
-        },
-        confirmpartUpdate() {
-            this.isPartUpdatte = true;
-            this.dartdialogVisible = false;
-            this.loadingText = '正在安装更新，请稍等...';
-            ipcRenderer.send('Sure');
-            // ipcRenderer.invoke('new_update').then(res => {
-            //     ipcRenderer.send('Sure')
-            // })
-        },
-        update() {
-            ipcRenderer.send('check-update');
-        },
-        confirmUpdate() {
-            this.isUpdatte = true;
-            this.dialogVisible = false;
-            ipcRenderer.send('confirm-downloadUpdate');
-        },
-        linstenerUpdate() {
-            let _this = this;
-            //接收主进程版本更新消息
-            ipcRenderer.on('UpdateMsg', (event, arg) => {
-                console.log(arg, 'arg');
 
-                let percentage = 0;
-                switch (arg.state) {
-                    case 1:
-                        _this.releaseNotes = arg.msg ? arg.msg.split('\r\n') : [];
-                        _this.dialogVisible = true;
-                        _this.$windows.show();
-                        // ipcRenderer.send('confirm-downloadUpdate')
-                        break;
-                    case 3:
-                        percentage = Math.floor(arg.msg.percent);
-                        _this.loadingText = `拼命下载中${percentage}%,请勿退出！`;
-                        break;
-                    case 4:
-                        _this.progressStaus = 'success';
-                        _this.loadingText = '下载完成,开始安装...';
-                        ipcRenderer.send('confirm-update');
-                        break;
-                }
-                // for (var i = 0; i < arg.length; i++) {
-                // console.log(arg)
-                // if ('update-available' == arg.cmd) {
-                //     //显示升级对话框
-                //     _this.dialogVisible = true
-                // } else if ('download-progress' == arg.cmd) {
-                //     //更新升级进度
-                //     /**
-                //          *
-                //          * message{bytesPerSecond: 47673
-                //          delta: 48960
-                //         percent: 0.11438799862426002
-                //         total: 42801693
-                //         transferred: 48960
-                //         }
-                //         */
-                //     console.log(arg.message.percent)
-                //     let percent = Math.round(parseFloat(arg.message.percent))
-                //     _this.percentage = percent
-                // } else if ('error' == arg.cmd) {
-                //     _this.dialogVisible = false
-                //     _this.$message('更新失败')
-                // }
-                // }
-            });
-        },
-        // linstenerIo() {
-        //     ipcRenderer.send('checkIoStutas')
-        //     ipcRenderer.on('checkIoStutas', (event, data) => {
-        //         // console.log(event, data, 'qq')
-        //         this.ioStatus = data
-        //     })
-        // },
-        linstenerPrinter() {
-            this.getPrintListHandle();
-        },
-        // 获取打印机列表
-        getPrintListHandle() {
-            // // 改用ipc异步方式获取列表，解决打印列数量多的时候导致卡死的问题
-            // ipcRenderer.send('getPrinterList')
-            // ipcRenderer.once('getPrinterList', (event, data) => {
-            const data = this.$electronStore.get('printerList');
-            // 过滤可用打印机
-            this.printList = data.filter(element => element.status === 0);
-            console.log(this.printList, 'this.printList');
-            // 1.判断是否有打印服务
-            if (this.printList.length <= 0) {
-                this.printerStutas = {
-                    msg: '打印服务异常,请尝试重启电脑',
-                    type: false
-                };
-            } else {
-                this.printerStutas = {
-                    msg: '打印功能准备就绪',
-                    type: true
-                };
-                // console.log(data, 'ccc')
-                // this.checkPrinter()
-                this.$electronStore.set('printList', this.printList);
-            }
-            // })
-        },
-        async togoPrint() {
-            this.$ipcRenderers.printHtml.get('on', (event, data) => {
-                if (data) this.checkStatus();
-            });
-            this.$ipcRenderers.printPdf.get('on', (event, data) => {
-                console.log(data, 'qqq');
-                if (data) this.checkStatus(data);
-            });
-        },
-
-        checkStatus(data) {
-            if (this.printerStutas.type) {
-                this.$windows.show();
-                console.log(this.$windows, data, ' this.$window');
-                if (!data) {
-                    this.$router.push('printEmr');
-                } else {
-                    this.$router.push('printPdf');
-                    // console.log(data.url, 'data.url')
-                    // window.open(data.url)
-                    // this.$windows.loadURL(data.url)
-                }
-            }
-        }
+    // 组件销毁前移除监听器
+    beforeDestroy() {
+      ipcRenderer.removeAllListeners('UpdatePartMsg');
+      ipcRenderer.removeAllListeners('InstallProgress');
     }
+  },
 };
 </script>
 
 <style lang="scss">
-.connectToweb {
-    width: 100%;
-    height: calc(100vh - 48px);
-    .tip {
+.check-status-container {
+  padding: 24px;
+  min-height: 100vh;
+  background: #f5f7fa;
+
+  .status-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+
+    .status-card {
+      background: #fff;
+      border-radius: 8px;
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+
+      &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+      }
+
+      .card-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        background: #ecf5ff;
         display: flex;
-        justify-content: center;
         align-items: center;
-        font-size: 18px;
-        .icon {
-            width: 30px;
-            height: 30px;
-            margin-left: 10px;
+        justify-content: center;
+        margin-right: 16px;
+
+        i {
+          font-size: 24px;
+          color: #409eff;
         }
-        line-height: 16px;
-        margin-top: 30px;
+      }
+
+      .card-content {
+        flex: 1;
+
+        .card-title {
+          font-size: 14px;
+          color: #909399;
+          margin-bottom: 8px;
+        }
+
+        .version-info, .printer-status {
+          font-size: 16px;
+          color: #303133;
+          font-weight: 500;
+        }
+      }
+
+      &.printer-card {
+        &.is-success {
+          .card-icon {
+            background: #f0f9eb;
+            i {
+              color: #67c23a;
+            }
+          }
+        }
+
+        &:not(.is-success) {
+          .card-icon {
+            background: #fef0f0;
+            i {
+              color: #f56c6c;
+            }
+          }
+        }
+      }
     }
+  }
 }
-.updateDialog {
-    .warning {
-        color: #e6a23c;
+
+.update-dialog {
+  .el-dialog__footer{
+    padding: 5px 20px 5px;
+  }
+  .el-dialog__header {
+    padding: 10px;
+    border-bottom: 1px solid #ebeef5;
+    margin: 0;
+
+    .el-dialog__title {
+      font-size: 16px;
+      font-weight: 500;
+    }
+  }
+
+  .el-dialog__body {
+    padding: 15px;
+    padding-bottom: 0;
+  }
+
+  .update-content {
+    .version-compare {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+      padding: 8px;
+      background: #f5f7fa;
+      border-radius: 8px;
+
+      .version-box {
+        text-align: center;
+        flex: 1;
+
+        .version-label {
+          font-size: 13px;
+          color: #909399;
+          margin-bottom: 4px;
+        }
+
+        .version-value {
+          font-size: 18px;
+          font-weight: 500;
+          color: #303133;
+
+          &.highlight {
+            color: #409eff;
+          }
+        }
+      }
+
+      .version-arrow {
+        padding: 0 15px;
+        color: #909399;
         font-size: 20px;
-        margin-right: 10px;
+      }
     }
-}
-.spanicon {
-    font-size: 18px;
-}
-.releaseNotes {
-    max-height: 150px;
-    margin-top: 10px;
-    // overflow: auto;
-    .releaseNotesItem {
-        // line-height: 24px;
-        padding-left: 10px;
-        margin: 10px;
-        font-size: 16px;
+
+    .update-notes {
+      .notes-title {
+        font-size: 14px;
+        color: #303133;
+        margin-bottom: 10px;
+        font-weight: 500;
+      }
+
+      .notes-list {
+        max-height: 186px;
+        overflow-y: auto;
+        padding-right: 5px;
+
+        &::-webkit-scrollbar {
+          width: 4px;
+        }
+
+        &::-webkit-scrollbar-thumb {
+          background: #c0c4cc;
+          border-radius: 2px;
+        }
+
+        &::-webkit-scrollbar-track {
+          background: #f5f7fa;
+        }
+
+        .note-item {
+          display: flex;
+          align-items: flex-start;
+          padding: 4px 0;
+          font-size: 13px;
+          color: #606266;
+
+          i {
+            color: #67c23a;
+            margin-right: 6px;
+            margin-top: 2px;
+          }
+        }
+      }
     }
+  }
+
+  .progress-content {
+    padding: 10px 0;
+    text-align: center;
+
+    .progress-icon {
+      font-size: 40px;
+      margin-bottom: 10px;
+      color: #409eff;
+    }
+
+    .progress-title {
+      font-size: 16px;
+      color: #303133;
+      margin-bottom: 15px;
+    }
+
+    .progress-text {
+      font-size: 13px;
+      color: #909399;
+      margin: 8px 0;
+    }
+
+    .el-progress {
+      .el-progress-bar__outer {
+        background-color: #ebeef5;
+        border-radius: 100px;
+      }
+
+      .el-progress-bar__inner {
+        border-radius: 100px;
+        background-color: #409eff;
+        transition: width 0.3s ease;
+      }
+
+      .el-progress__text {
+        font-size: 13px !important;
+        color: #606266;
+      }
+    }
+
+    .progress-tip {
+      font-size: 12px;
+      color: #909399;
+      margin-top: 8px;
+      font-style: italic;
+    }
+  }
+
+  .dialog-footer {
+    padding: 5px 20px 5px;
+    border-top: 1px solid #ebeef5;
+    text-align: right;
+
+    .el-button {
+      padding: 8px 15px;
+      font-size: 13px;
+    }
+  }
+
+  .dialog-title {
+    display: flex;
+    align-items: center;
+
+    i {
+      font-size: 18px;
+      margin-right: 8px;
+      color: #409eff;
+    }
+
+    span {
+      font-size: 16px;
+      font-weight: 500;
+    }
+  }
 }
 </style>

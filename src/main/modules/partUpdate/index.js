@@ -114,7 +114,7 @@ const emptyDir = (dirPath) => {
 
         // 读取目录内容
         const files = fs.readdirSync(dirPath);
-        updateLog.info(`准备清理目录: ${dirPath}, 文件数量: ${files.length}`);
+        // updateLog.info(`准备清理目录: ${dirPath}, 文件数量: ${files.length}`);
 
         for (const file of files) {
             const curPath = path.join(dirPath, file);
@@ -127,11 +127,11 @@ const emptyDir = (dirPath) => {
                     emptyDir(curPath);
                     // 删除空的子文件夹
                     fs.rmdirSync(curPath);
-                    updateLog.info(`删除文件夹成功: ${curPath}`);
+                    // updateLog.info(`删除文件夹成功: ${curPath}`);
                 } else {
                     // 删除文件
                     fs.unlinkSync(curPath);
-                    updateLog.info(`删除文件成功: ${curPath}`);
+                    // updateLog.info(`删除文件成功: ${curPath}`);
                 }
             } catch (fileError) {
                 updateLog.error(`删除文件失败: ${curPath}, 错误: ${fileError.message}`);
@@ -267,7 +267,7 @@ const createBackup = async () => {
       if (!fs.existsSync(backupFolder)) {
         fs.mkdirSync(backupFolder);
       }
-  
+
       // 3. 复制当前使用的文件到备份目录
     const filesToBackup = [
         { 
@@ -279,7 +279,7 @@ const createBackup = async () => {
           dest: `${backupFolder}latest.yml` 
         }
       ];
-  
+
       let backupCount = 0;
       for (const file of filesToBackup) {
         if (fs.existsSync(file.src)) {
@@ -290,14 +290,14 @@ const createBackup = async () => {
           updateLog.warn(`文件不存在，跳过备份: ${file.src}`);
         }
       }
-  
+
       // 4. 检查备份结果
       if (backupCount === 0) {
         fs.rmdirSync(backupFolder);
         updateLog.warn('没有文件需要备份，删除空文件夹');
         return null;
       }
-  
+
       updateLog.info(`备份完成，共备份 ${backupCount} 个文件，备份目录: ${backupFolder}`);
       return timestamp;
     } catch (error) {
@@ -312,21 +312,21 @@ const cleanOldBackups = (keepCount = 5) => {
     try {
       const minKeepCount = 3; // 设置最小保留数量
       const actualKeepCount = Math.max(keepCount, minKeepCount);
-  
+
       if (!fs.existsSync(backupDir)) {
         updateLog.info('备份目录不存在，无需清理');
         return;
       }
-  
+
       const backups = fs.readdirSync(backupDir)
         .filter(file => file.startsWith('backup_'))
         .sort((a, b) => b.localeCompare(a)); // 降序排序，最新的在前
-  
+
       if (backups.length <= actualKeepCount) {
         updateLog.info(`当前备份数量(${backups.length})小于等于保留数量(${actualKeepCount})，无需清理`);
         return;
       }
-  
+
       // 删除多余的备份
       backups.slice(actualKeepCount).forEach(backup => {
         try {
@@ -338,7 +338,7 @@ const cleanOldBackups = (keepCount = 5) => {
           updateLog.error(`清理备份${backup}失败: ${err.message}`);
         }
       });
-  
+
       updateLog.info(`备份清理完成，保留了${actualKeepCount}个最新备份`);
     } catch (error) {
       updateLog.error(`清理旧备份过程出错: ${error.message}`);
@@ -443,41 +443,158 @@ const checkForUpdates = async (type) => {
   }
 };
 
-const installUpdate = async () => {
-    try {
-      // 1. 解压更新包
-      const unzip = new admZip(paths.temp.zip);
-      updateLog.info(`解压更新包到: ${installDir}`);
-      unzip.extractAllTo(installDir, true);
-      
-      // 2. 备份新安装的版本
-      const backupTimestamp = await createBackup();
-      if (backupTimestamp) {
-        updateLog.info(`新版本备份完成: ${backupTimestamp}`);
-      }
-      
-      // 3. 清理临时文件和旧备份
-      emptyDir(tempDir);
-      cleanOldBackups(5);
-      
-      // 4. 重启应用
-      global.forceQuit = true;
-      updateLog.info("更新完成，准备重启");
-
-      if (global.$windowService) {
-        global.$windowService.closeAllWindows();
+// 在开始安装更新前,设置窗口为不可关闭状态
+const startInstallUpdate = async () => {
+  try {
+    const win = global.$windows;
+    if (!win) {
+      updateLog.error('窗口未创建');
+      return;
     }
 
-    // 确保在下一个事件循环中执行重启
-    setImmediate(() => {
-        app.relaunch();
-        app.exit(0);
+    // 禁用窗口关闭按钮
+    win.setClosable(false);
+    
+    // 添加关闭事件处理
+    win.on('close', (e) => {
+      if (!global.forceQuit) {
+        e.preventDefault();
+        global.$notification.create("提示", "更新过程中请勿关闭窗口");
+      }
     });
 
-    } catch (error) {
-      updateLog.error(`更新安装失败: ${error.message}`);
-      throw new UpdateError('安装更新失败', 'INSTALL_ERROR');
+    await installUpdate();
+  } catch (error) {
+    // 发生错误时恢复窗口可关闭状态
+    const win = global.$windows;
+    if (win) {
+      win.setClosable(true);
     }
+    handleError(error);
+  }
+};
+
+// 修改 ipcMain 事件监听
+ipcMain.on("Sure", async () => {
+  await startInstallUpdate();
+});
+
+// 在 installUpdate 函数完成时设置 forceQuit
+const installUpdate = async () => {
+  try {
+    // 1. 解压更新包
+    const tempExtractDir = path.join(tempDir, 'extract_temp');
+    !fs.existsSync(tempExtractDir) && fs.mkdirSync(tempExtractDir, { recursive: true });
+
+    const unzip = new admZip(paths.temp.zip);
+    updateLog.info(`解压更新包到临时目录: ${tempExtractDir}`);
+
+    // 发送安装进度消息 - 开始解压
+    sendUpdateMessage("InstallProgress", { 
+      step: "正在解压新版本文件", 
+      progress: 10,
+      message: "请耐心等待，不要关闭程序..."
+    });
+
+    // 使用 Promise 包装解压操作，避免阻塞
+    await new Promise((resolve, reject) => {
+      setImmediate(() => {
+        try {
+          unzip.extractAllTo(tempExtractDir, true);
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    // 2. 备份新安装的版本
+    const backupTimestamp = await createBackup();
+    if (backupTimestamp) {
+      updateLog.info(`新版本备份完成: ${backupTimestamp}`);
+    }
+
+    // 发送安装进度消息 - 备份完成
+    sendUpdateMessage("InstallProgress", { 
+      step: "正在备份重要文件", 
+      progress: 30,
+      message: "确保您的数据安全..."
+    });
+
+    // 3. 清理旧备份
+    cleanOldBackups(5);
+
+    // 发送安装进度消息 - 准备更新
+    sendUpdateMessage("InstallProgress", { 
+      step: "准备更新文件", 
+      progress: 50,
+      message: "即将完成更新..."
+    });
+
+    // 4. 关闭所有窗口
+    if (global.$windowService) {
+      global.$windowService.closeAllWindows();
+    }
+
+    sendUpdateMessage("InstallProgress", { 
+      step: "正在更新文件", 
+      progress: 80,
+      message: "更新即将完成..."
+    });
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    // 先发送100%的进度
+    sendUpdateMessage("InstallProgress", { 
+      step: "更新完成", 
+      progress: 100,
+      message: "正在完成最后的处理..."
+    });
+
+    // 等待一小段时间确保进度消息被处理
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // 5. 复制文件
+    const copyRecursive = (src, dest) => {
+      const exists = fs.existsSync(src);
+      const stats = exists && fs.statSync(src);
+      const isDirectory = exists && stats.isDirectory();
+
+      if (isDirectory) {
+        !fs.existsSync(dest) && fs.mkdirSync(dest, { recursive: true });
+        fs.readdirSync(src).forEach(childItemName => {
+          copyRecursive(path.join(src, childItemName), path.join(dest, childItemName));
+        });
+      } else {
+        fs.copyFileSync(src, dest);
+      }
+    };
+
+    // 复制文件
+    copyRecursive(path.join(tempExtractDir, 'resources'), installDir);
+    
+    // 6. 清理临时文件
+    emptyDir(tempExtractDir);
+    fs.rmdirSync(tempExtractDir);
+    emptyDir(tempDir);
+
+    // 7. 重启应用
+    global.forceQuit = true;
+    updateLog.info("更新完成，准备重启");
+
+    // 确保在下一个事件循环中执行重启
+    setTimeout(() => {
+      app.relaunch();
+      app.exit(0);
+    }, 2000);
+
+  } catch (error) {
+    // 发生错误时恢复窗口可关闭状态
+    const win = global.$windows;
+    if (win) {
+      win.setClosable(true);
+    }
+    updateLog.error(`更新安装失败: ${error.message}`);
+    throw new UpdateError('安装更新失败', 'INSTALL_ERROR');
+  }
 };
 
 // 消息发送函数
@@ -502,14 +619,5 @@ const sendUpdateMessage = (type, data) => {
       updateLog.info(`消息已发送 - 类型: ${type}, 数据:`, data);
     }
   };
-
-// 事件监听
-ipcMain.on("Sure", async () => {
-  try {
-    await installUpdate();
-  } catch (error) {
-    handleError(error);
-  }
-});
 
 export { checkForUpdates };

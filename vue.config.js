@@ -42,7 +42,7 @@ module.exports = {
           },
         ],
         releaseInfo: {
-          releaseNotesFile: `release-${red}.md`,
+          releaseNotesFile: `releaseNote/release-${red}.md`,
         },
         compression: "store",
         win: {

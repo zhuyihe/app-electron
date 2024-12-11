@@ -3,11 +3,8 @@
   "version": "1.0.1",
   "private": true,
   "scripts": {
-    "serve": "vue-cli-service serve",
-    "build": "vue-cli-service build",
-    "lint": "vue-cli-service lint",
-    "electron:build": "vue-cli-service electron:build",
-    "electron:serve": "vue-cli-service electron:serve  --inspect=5858 ."
+    "build": "vue-cli-service electron:build",
+    "serve": "vue-cli-service electron:serve  --inspect=5858 ."
   },
   "main": "background.js",
   "dependencies": {
@@ -32,7 +29,8 @@
     "loadsh": "^0.0.4",
     "sass-loader": "^7.3.1",
     "uuid": "^8.3.2",
-    "vue": "^2.6.11"
+    "vue": "^2.6.11",
+    "vue-router": "^3.2.0"
   },
   "devDependencies": {
     "@vue/cli-plugin-eslint": "~4.5.17",
