@@ -235,8 +235,9 @@ export default {
 <style lang="scss">
 .check-status-container {
   padding: 24px;
-  min-height: 100vh;
+  min-height: 95vh;
   background: #f5f7fa;
+  padding-bottom:0 ;
 
   .status-cards {
     display: grid;
