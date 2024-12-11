@@ -144,7 +144,7 @@ const WindowService = () => {
     closeAllWindows() {
       try {
         const windowIds = Array.from(this.winItems.keys());
-        windowIds.forEach((windowId) => {
+        windowIds.forEach((windowId) => { 
           this.closeWindow(windowId);
         });
         this.winItems.clear();

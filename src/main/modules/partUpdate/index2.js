@@ -15,7 +15,7 @@ const getUpadteJson = async () => {
   const fileUrlObj = {
     hostname: curEnv.VUE_APP_HOST_NAME,
     port: 443,
-    path: curEnv.VUE_APP_PATH_NAME,
+    path: curEnv.VUE_APP_PATH_YML_NAME,
     method: "GET",
   };
   
@@ -32,7 +32,7 @@ const downLoad = (updateMsg, curEnv) => {
   return new Promise((resolve, reject) => {
     // 创建一个可以写入的流，
     const stream = fs.createWriteStream(downLoadZip);
-    const url = `https://${curEnv.VUE_APP_HOST_NAME}/${curEnv.VUE_APP_UPDATE_PATH_NAME}`;
+    const url = `https://${curEnv.VUE_APP_HOST_NAME}/${curEnv.VUE_APP_UPDATE_ZIP_PATH_NAME}`;
     const req = request({
       url,
       rejectUnauthorized: false,
@@ -203,7 +203,7 @@ async function checkIfFileExists(updateMsg) {
     rejectUnauthorized: false,
     hostname: curEnv.VUE_APP_HOST_NAME,
     port: 443,
-    path: curEnv.VUE_APP_UPDATE_PATH_NAME,
+    path: curEnv.VUE_APP_UPDATE_ZIP_PATH_NAME,
     method: "GET",
   };
   const req = https.request(options, async function (res) {

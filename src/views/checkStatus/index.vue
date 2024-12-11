@@ -381,7 +381,7 @@ export default {
       }
 
       .notes-list {
-        max-height: 186px;
+        max-height: 182px;
         min-height:100px;
         overflow-y: auto;
         padding-right: 5px;
@@ -465,7 +465,7 @@ export default {
   }
 
   .dialog-footer {
-    padding: 5px 20px 5px;
+    padding: 10px 0 5px;
     border-top: 1px solid #ebeef5;
     text-align: right;
 

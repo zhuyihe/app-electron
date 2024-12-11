@@ -20,6 +20,8 @@ export default function launchApp() {
         return app.quit()
     }
     let win
+    // 设置应用名称
+    app.setName('Glprinter')
     // protocol.registerSchemesAsPrivileged([
     //     {
     //         scheme: 'app',

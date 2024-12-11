@@ -375,8 +375,8 @@ const checkForUpdates = async (type) => {
     const { curEnv } = await getUpdateConfig();
     
     if (!curEnv.VUE_APP_HOST_NAME || 
-        !curEnv.VUE_APP_PATH_NAME || 
-        !curEnv.VUE_APP_UPDATE_PATH_NAME) {
+        !curEnv.VUE_APP_PATH_YML_NAME || 
+        !curEnv.VUE_APP_UPDATE_ZIP_PATH_NAME) {
       throw new UpdateError('更新配置不完整', 'CONFIG_ERROR');
     }
 
@@ -385,7 +385,7 @@ const checkForUpdates = async (type) => {
     // 下载 latest.yml 到临时目录
     await downloadFile(
       curEnv,
-      curEnv.VUE_APP_PATH_NAME,
+      curEnv.VUE_APP_PATH_YML_NAME,
       paths.temp.yml
     );
     
@@ -422,7 +422,7 @@ const checkForUpdates = async (type) => {
         // 下载 resources.zip 到临时目录
         await downloadFile(
           curEnv,
-          curEnv.VUE_APP_UPDATE_PATH_NAME,
+          curEnv.VUE_APP_UPDATE_ZIP_PATH_NAME,
           paths.temp.zip,
           updateMsg
         );
@@ -569,7 +569,9 @@ const installUpdate = async () => {
     };
 
     // 复制文件
-    copyRecursive(path.join(tempExtractDir, 'resources'), installDir);
+    const resourcesParentDir = path.join(installDir+"/resources");
+    console.log(resourcesParentDir, 'resourcesParentDir')
+    copyRecursive(path.join(tempExtractDir, 'resources'), resourcesParentDir);
     
     // 6. 清理临时文件
     emptyDir(tempExtractDir);

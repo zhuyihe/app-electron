@@ -31,7 +31,7 @@ const loadHtml = (emrConfig, res,type) => {
   const option = {
     show: global.isDevMode ? true : false,
     webPreferences: {
-      enableRemoteModule: true, // 启用remote
+      enableRemoteModule: true,
       nodeIntegration: true,
       nodeIntegrationInSubFrames: true,
       webviewTag: true,
@@ -39,7 +39,11 @@ const loadHtml = (emrConfig, res,type) => {
     },
   };
   const id = uuidv4();
-  const win = global.$windowService.createWinItem(id, option, staticPath);
+  const win = global.$windowService.createBrowserWindow({
+    option,
+    url: staticPath
+  });
+  global.$windowService.addWinItem(id, win);
   win.loadURL(staticPath);
   printSilent(win, emrConfig, res, id);
 };
@@ -90,7 +94,7 @@ const printSilent = (win, emrConfig, res, id) => {
         resStatus(res, true, msg);
       }
       printerConfig.msg = msg;
-      global.logs.info(`print ${data}==>${JSON.stringify(printerConfig)}`);
+      global.logs('print').info(`print ${data}==>${JSON.stringify(printerConfig)}`);
       global.$notification.create("打印消息", msg);
       console.log(data, global.isDevMode, "打印结果");
       if (!global.isDevMode) global.$windowService.closeWindow(id)
