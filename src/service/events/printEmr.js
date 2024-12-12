@@ -49,7 +49,10 @@ const loadHtml = (emrConfig, res,type) => {
 };
 const printSilent = (win, emrConfig, res, id) => {
   const { PrintSettings } = emrConfig;
+  console.log(PrintSettings, "打印配置");
+  console.log(`Electron version: ${process.versions.electron}`)
   let { PrintName, PrintNum, Duplex } = PrintSettings,
+ 
     duplexMode = "";
   switch (Duplex) {
     case "Simplex":
@@ -82,7 +85,7 @@ const printSilent = (win, emrConfig, res, id) => {
       copies: parseInt(PrintNum) || 1,
       duplexMode,
     };
-
+    console.log(printerConfig, "打印配置");
     // 调用打印方法
     win.webContents.print(printerConfig, (data) => {
       let msg = "";

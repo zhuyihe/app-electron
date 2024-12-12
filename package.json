@@ -1,6 +1,6 @@
 {
   "name": "Glprinter",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "scripts": {
     "build": "vue-cli-service electron:build",
@@ -38,7 +38,7 @@
     "@vue/cli-plugin-vuex": "^4.5.19",
     "@vue/cli-service": "~4.5.17",
     "babel-eslint": "^10.1.0",
-    "electron": "^13.0.0",
+    "electron": "^20.0.3",
     "electron-devtools-installer": "^3.1.0",
     "electron-updater": "^5.2.1",
     "eslint": "^6.7.2",
