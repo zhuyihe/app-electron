@@ -45,45 +45,46 @@ export const checkDirectoryPermissions = async (dirPath) => {
             return result;
         }
 
-        // // 如果没有权限文件，继续检查其他权限但保持 hasPermission 为 false
-        // if (!fs.existsSync(dirPath)) {
-        //     result.details.error = '目录不存在';
-        //     return result;
-        // }
+        // 如果没有权限文件，继续检查其他权限但保持 hasPermission 为 false
+        if (!fs.existsSync(dirPath)) {
+            result.details.error = '目录不存在';
+            return result;
+        }
 
-        // // 检查读取权限
-        // try {
-        //     await fs.promises.access(dirPath, fs.constants.R_OK);
-        //     result.details.read = true;
-        // } catch (error) {
-        //     permissionLog.warn(`目录 ${dirPath} 缺少读取权限`);
-        // }
+        // 检查读取权限
+        try {
+            await fs.promises.access(dirPath, fs.constants.R_OK);
+            result.details.read = true;
+        } catch (error) {
+            permissionLog.warn(`目录 ${dirPath} 缺少读取权限`);
+        }
 
-        // // 检查写入权限
-        // try {
-        //     const testFile = path.join(dirPath, '.permission_test');
-        //     fs.writeFileSync(testFile, 'test');
-        //     fs.unlinkSync(testFile);
-        //     result.details.write = true;
-        // } catch (error) {
-        //     permissionLog.warn(`目录 ${dirPath} 缺少写入权限`);
-        // }
+        // 检查写入权限
+        try {
+            const testFile = path.join(dirPath, '.permission_test');
+            fs.writeFileSync(testFile, 'test');
+            fs.unlinkSync(testFile);
+            result.details.write = true;
+        } catch (error) {
+            permissionLog.warn(`目录 ${dirPath} 缺少写入权限`);
+        }
 
-        // // 检查执行权限
-        // try {
-        //     await fs.promises.access(dirPath, fs.constants.X_OK);
-        //     result.details.execute = true;
-        // } catch (error) {
-        //     permissionLog.warn(`目录 ${dirPath} 缺少执行权限`);
-        // }
+        // 检查执行权限
+        try {
+            await fs.promises.access(dirPath, fs.constants.X_OK);
+            result.details.execute = true;
+        } catch (error) {
+            permissionLog.warn(`目录 ${dirPath} 缺少执行权限`);
+        }
 
-        // // 即使有所有基本权限，没有权限文件也返回 false
-        // result.hasPermission = false;
-        // if (result.details.read && result.details.write && result.details.execute) {
-        //     permissionLog.info(`目录 ${dirPath} 有基本权限，但缺少权限标记文件`);
-        // } else {
-        //     permissionLog.warn(`目录 ${dirPath} 权限检查未通过，缺少必要权限`);
-        // }
+        // 即使有所有基本权限，没有权限文件也返回 false
+        result.hasPermission = false;
+        if (result.details.read && result.details.write && result.details.execute) {
+            permissionLog.info(`目录 ${dirPath} 有基本权限，直接通过`);
+            result.hasPermission = true;
+        } else {
+            permissionLog.warn(`目录 ${dirPath} 权限检查未通过，缺少必要权限`);
+        }
 
     } catch (error) {
         result.details.error = error.message;
