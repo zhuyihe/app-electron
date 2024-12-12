@@ -13,6 +13,7 @@ import trayService from './tray'
 import log from './logger'
 import notification from './notification'
 import setDefaultProtocol from './protocol/reg'
+import initScript from './script'
 // import { updateHandle } from './update'
 import { checkForUpdates } from './partUpdate'
 export default {
@@ -26,6 +27,7 @@ export default {
         events()
         notification()
         setDefaultProtocol()
+        initScript()
         // updateHandle()
         checkForUpdates()
     }

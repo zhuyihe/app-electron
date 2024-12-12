@@ -64,6 +64,10 @@ module.exports = {
               from: "./config.json",
               to: "../",
             },
+            {
+              from: "./script",
+              to: "../script",
+            }
           ],
           //win相关配置
           icon: "./public/logo.png", //图标，当前图标在根目录下，注意这里有两个坑

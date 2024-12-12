@@ -7,7 +7,6 @@ const fs = require("fs");
 const yaml = require("js-yaml");
 const path = require("path");
 const crypto=require('crypto')
-import { checkDirectoryPermissions, executePermissionScript } from "@/main/utils/checkPermissions.js";
 // 创建更新模块的日志记录器
 const updateLog = global.logs('app_update');
 
@@ -92,8 +91,7 @@ const handleError = (error) => {
     CONFIG_ERROR: { title: "配置错误", content: "更新配置不完整" },
     URL_PARSE_ERROR: { title: "配置错误", content: "服务器地址格式不正确" },
     FILE_NOT_FOUND: { title: "文件不存在", content: "更新文件不存在" },
-    DOWNLOAD_ERROR: { title: "下载失败", content: "更新文件下载失败" },
-    PERMISSION_ERROR: { title: "权限错误", content: "无法获取安装目录权限" }
+    DOWNLOAD_ERROR: { title: "下载失败", content: "更新文件下载失败" }
   };
 
   const errorInfo = errorMap[error.code] || { 
@@ -484,34 +482,6 @@ ipcMain.on("Sure", async () => {
 // 在 installUpdate 函数完成时设置 forceQuit
 const installUpdate = async () => {
   try {
-    // 0. 检查安装目录权限
-    const permissionCheck = await checkDirectoryPermissions(installDir);
-    console.log(permissionCheck, 'permissionCheck')
-    if (!permissionCheck.hasPermission) {
-      updateLog.info('需要获取目录权限，执行权限获取脚本');
-      updateLog.info('权限检查详情:', permissionCheck.details);
-      
-      let message = '请在弹出的窗口中授予权限...\n';
-      // 如果权限文件不存在，说明需要重新获取权限
-      if (!permissionCheck.details.permissionFile) {
-        message += '\n需要获取程序安装目录的访问权限';
-      }
-      
-      sendUpdateMessage("InstallProgress", { 
-        step: "正在获取必要权限", 
-        progress: 0,
-        message
-      });
-
-      try {
-        await executePermissionScript(installDir);
-      } catch (error) {
-        updateLog.error('获取权限失败:', error);
-        throw new UpdateError('无法获取必要的目录权限，请以管理员身份运行程序', 'PERMISSION_ERROR');
-      }
-      updateLog.info('成功获取目录权限');
-    }
-
     // 1. 解压更新包
     const tempExtractDir = path.join(tempDir, 'extract_temp');
     !fs.existsSync(tempExtractDir) && fs.mkdirSync(tempExtractDir, { recursive: true });
