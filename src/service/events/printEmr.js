@@ -1,19 +1,29 @@
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 const { resStatus } = require("../events/resStatus");
-
+// const log=global.logs('print')
 const printEmr = (req, res) => {
   console.log(global.$notification);
   global.$notification.create("打印消息", "病历打印中...");
   let { FileStream, showHtml,type } = req.body;
   const fontWeight =
     "font-weight: bold;text-shadow:0.15pt 0px 0px black, 0.25pt 0px 0px black, 0.35pt 0px 0px black, -0.25pt 0px 0px black, 0px 0.25pt 0px black, 0px -0.25pt 0px black;";
-  // FileStream = FileStream.replace(/\SimSun/g, 'FangSong')
   const fontNormal = "font-weight: normal;text-shadow: 0 0 black;";
-  FileStream = FileStream.replaceAll("font-weight: bold;", fontWeight);
-  FileStream = FileStream.replaceAll("font-weight: normal;", fontNormal);
-  FileStream = FileStream.replaceAll("<b>", `<b style="${fontWeight}">`);
-  // console.log(FileStream,'FileStream')
+
+  // 处理所有可能的加粗情况
+  const boldPatterns = [
+    { pattern: /<b>/g, replace: `<b style="${fontWeight}">` },
+    { pattern: /<strong>/g, replace: `<strong style="${fontWeight}">` },
+    { pattern: /font-weight:\s*bold/g, replace: fontWeight },
+    { pattern: /font-weight:\s*700/g, replace: fontWeight },
+    { pattern: /font-weight:\s*normal/g, replace: fontNormal }
+  ];
+
+  // 应用所有替换规则
+  boldPatterns.forEach(({ pattern, replace }) => {
+    FileStream = FileStream.replaceAll(pattern, replace);
+  });
+
   let emrConfig = {
     ...req.body,
     FileStream,
@@ -36,6 +46,8 @@ const loadHtml = (emrConfig, res,type) => {
       nodeIntegrationInSubFrames: true,
       webviewTag: true,
       contextIsolation: false,
+      // 禁用HTTP缓存
+      partition: 'no-cache'
     },
   };
   const id = uuidv4();
@@ -44,6 +56,13 @@ const loadHtml = (emrConfig, res,type) => {
     url: staticPath
   });
   global.$windowService.addWinItem(id, win);
+
+  // 设置请求头禁用缓存
+  win.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
+    details.requestHeaders['Cache-Control'] = 'no-cache';
+    callback({ requestHeaders: details.requestHeaders });
+  });
+
   win.loadURL(staticPath);
   printSilent(win, emrConfig, res, id);
 };
@@ -51,6 +70,7 @@ const printSilent = (win, emrConfig, res, id) => {
   const { PrintSettings } = emrConfig;
   console.log(PrintSettings, "打印配置");
   console.log(`Electron version: ${process.versions.electron}`)
+  // global.logs('print').info(`Electron version: ${data}==>${JSON.stringify(printerConfig)}`);
   let { PrintName, PrintNum, Duplex } = PrintSettings,
  
     duplexMode = "";

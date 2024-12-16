@@ -45,7 +45,7 @@ const printPdf = (req, res, next) => {
   }
 };
 const getPrinters = async (req, res, next) => {
-  const printers = await global.$windows.webContents.getPrinters();
+  const printers = await global.$windows.webContents.getPrintersAsync();
   console.log(printers, "printers");
   res.status(200).json({
     success: true,

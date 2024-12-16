@@ -92,7 +92,7 @@ const handleError = (error) => {
     CONFIG_ERROR: { title: "配置错误", content: "更新配置不完整" },
     URL_PARSE_ERROR: { title: "配置错误", content: "服务器地址格式不正确" },
     FILE_NOT_FOUND: { title: "文件不存在", content: "更新文件不存在" },
-    DOWNLOAD_ERROR: { title: "下载失败", content: "更新文件下载失败" },
+    DOWNLOAD_ERROR: { title: "更新文件下载失败", content: "更新文件下载失败" },
     PERMISSION_ERROR: { title: "权限错误", content: "无法获取安装目录权限" }
   };
 
@@ -208,7 +208,10 @@ const downloadFile = async (curEnv, filePath, fileName, updateMsg = null) => {
     const { protocol, fullUrl } = parseUrl(curEnv.VUE_APP_HOST_NAME);
     const url = `${fullUrl}${filePath}`;
 
-    updateLog.info(`开始下载文件: ${url}, 协议: ${protocol}`);
+    updateLog.info(`==================下载文件开始==================`);
+    updateLog.info(`下载URL: ${url}`);
+    updateLog.info(`目标文件: ${fileName}`);
+    updateLog.info(`使用协议: ${protocol}`);
 
     const axiosConfig = {
       url,
@@ -219,7 +222,6 @@ const downloadFile = async (curEnv, filePath, fileName, updateMsg = null) => {
         const percentage = Math.round(
           (progressEvent.loaded * 100) / progressEvent.total
         );
-        //  sendUpdateMessage("UpdateProgress", { percentage });
       }
     };
 
@@ -227,30 +229,137 @@ const downloadFile = async (curEnv, filePath, fileName, updateMsg = null) => {
       axiosConfig.httpsAgent = new https.Agent({
         rejectUnauthorized: false
       });
+      updateLog.info('已配置HTTPS代理，禁用证书验证');
     }
 
+    updateLog.info('开始发送下载请求...');
     const response = await axios(axiosConfig);
-    const writer = fs.createWriteStream(fileName);
+    updateLog.info('收到服务器响应');
+    
+    // 检查是否有 Content-Length 头
+    const contentLength = response.headers['content-length'];
+    if (!contentLength) {
+      updateLog.error('服务器响应中没有Content-Length头信息');
+      throw new UpdateError('无法获取文件大小信息', 'DOWNLOAD_ERROR');
+    }
+    const fileSizeMB = (parseInt(contentLength) / (1024 * 1024)).toFixed(2);
+    updateLog.info(`预期文件大小: ${fileSizeMB}MB`);
+
+    // 创建临时文件名
+    const tempFileName = `${fileName}.downloading`;
+    updateLog.info(`创建临时文件: ${tempFileName}`);
+    const writer = fs.createWriteStream(tempFileName);
+    
+    let downloadedSize = 0;
+    response.data.on('data', (chunk) => {
+      downloadedSize += chunk.length;
+      if (downloadedSize % (1024 * 1024) === 0) {
+        const downloadedSizeMB = (downloadedSize / (1024 * 1024)).toFixed(2);
+        updateLog.info(`已下载: ${downloadedSizeMB}MB`);
+      }
+    });
+
     response.data.pipe(writer);
 
     return new Promise((resolve, reject) => {
-      writer.on('finish', () => {
-        console.log(updateMsg,'updateMsg')
-        if(updateMsg) {
-          sendUpdateMessage("UpdatePartMsg", updateMsg);
+      writer.on('finish', async () => {
+        try {
+          updateLog.info('文件写入完成，开始验证...');
+          
+          // 验证文件大小
+          const stats = fs.statSync(tempFileName);
+          const actualSizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+          updateLog.info(`实际下载大小: ${actualSizeMB}MB`);
+          
+          if (stats.size !== parseInt(contentLength)) {
+            updateLog.error(`文件大小不匹配! 预期: ${fileSizeMB}MB, 实际: ${actualSizeMB}MB`);
+            fs.unlinkSync(tempFileName);
+            throw new UpdateError('更新文件下载失败', 'DOWNLOAD_ERROR');
+          }
+          updateLog.info('文件大小验证通过');
+
+          // 如果是zip文件，验证zip格式
+          if (fileName.endsWith('.zip')) {
+            updateLog.info('开始验证ZIP文件格式...');
+            try {
+              const zip = new admZip(tempFileName);
+              const entries = zip.getEntries();
+              updateLog.info(`ZIP格式验证通过，包含 ${entries.length} 个文件`);
+              // 输出zip内文件列表
+              entries.forEach(entry => {
+                const entrySizeMB = (entry.header.size / (1024 * 1024)).toFixed(2);
+                // updateLog.info(`- ${entry.entryName} (${entrySizeMB}MB)`);
+              });
+            } catch (error) {
+              updateLog.error(`ZIP格式验证失败: ${error.message}`);
+              fs.unlinkSync(tempFileName);
+              throw new UpdateError('无效的ZIP文件格式', 'INVALID_ZIP_FORMAT');
+            }
+          } else if (fileName.endsWith('.yml')) {
+            updateLog.info('开始验证YML文件格式...');
+            try {
+              const ymlContent = fs.readFileSync(tempFileName, 'utf8');
+              const doc = yaml.load(ymlContent);
+              console.log(doc,'doc22112')
+              if (!doc || typeof doc !== 'object') {
+                throw new Error('无效的YAML格式');
+              }
+              updateLog.info('YML格式验证通过');
+            } catch (error) {
+              updateLog.error(`YML格式验证失败: ${error.message}`);
+              fs.unlinkSync(tempFileName);
+              throw new UpdateError('无效的YML文件格式', 'INVALID_YML_FORMAT');
+            }
+          }
+
+          // 验证成功，重命名文件
+          updateLog.info('所有验证通过，准备重命名文件...');
+          if (fs.existsSync(fileName)) {
+            updateLog.info(`删除已存在的文件: ${fileName}`);
+            fs.unlinkSync(fileName);
+          }
+          fs.renameSync(tempFileName, fileName);
+          updateLog.info(`文件重命名成功: ${tempFileName} -> ${fileName}`);
+
+          if(updateMsg) {
+            sendUpdateMessage("UpdatePartMsg", updateMsg);
+            updateLog.info('已发送更新消息通知');
+          }
+          updateLog.info(`==================下载文件完成==================`);
+          resolve(true);
+        } catch (error) {
+          updateLog.error(`验证过程出错: ${error.message}`);
+          if (fs.existsSync(tempFileName)) {
+            updateLog.info(`清理临时文件: ${tempFileName}`);
+            fs.unlinkSync(tempFileName);
+          }
+          reject(error);
         }
-        updateLog.info(`文件下载完成: ${fileName}`);
-        resolve(true);
       });
+
       writer.on('error', (err) => {
-        updateLog.error(`文件下载失败: ${err.message}`);
+        updateLog.error(`文件写入错误: ${err.message}`);
+        if (fs.existsSync(tempFileName)) {
+          updateLog.info(`清理临时文件: ${tempFileName}`);
+          fs.unlinkSync(tempFileName);
+        }
         reject(new UpdateError('下载文件失败', 'DOWNLOAD_ERROR'));
+      });
+
+      response.data.on('error', (err) => {
+        updateLog.error(`数据传输错误: ${err.message}`);
+        if (fs.existsSync(tempFileName)) {
+          updateLog.info(`清理临时文件: ${tempFileName}`);
+          fs.unlinkSync(tempFileName);
+        }
+        reject(new UpdateError('数据传输失败', 'DOWNLOAD_ERROR'));
       });
     });
   } catch (error) {
-    // 直接使用原有错误码或转换为 DOWNLOAD_ERROR
+    updateLog.error(`下载过程出错: ${error.message}`);
+    updateLog.error(`错误堆栈: ${error.stack}`);
     const errorCode = error.code || 'DOWNLOAD_ERROR';
-    throw new UpdateError('下载文件失败', errorCode);
+    // throw new UpdateError(error.message || '下载文件失败', errorCode);
   }
 };
 
@@ -371,75 +480,147 @@ const rollback = async (timestamp) => {
   }
 };
 
+// 获取最新版本信息
+const getLatestVersion = async (curEnv, currentVersion) => {
+  try {
+    let latestVersion = {
+      version: currentVersion,
+      releaseNotes: '',
+      source: 'current'
+    };
+
+    // 检查本地临时文件
+    if (fs.existsSync(paths.temp.yml) && fs.existsSync(paths.temp.zip)) {
+      try {
+        updateLog.info('检查本地临时文件版本...');
+        const localYmlContent = fs.readFileSync(paths.temp.yml, 'utf8');
+        const localDoc = yaml.load(localYmlContent);
+        const { version: localVersion, releaseNotes: localNotes } = localDoc;
+
+        if (localVersion && compareVersions(localVersion, latestVersion.version) > 0) {
+          updateLog.info(`发现更高版本的本地临时文件: v${localVersion}`);
+          latestVersion = {
+            version: localVersion,
+            releaseNotes: localNotes,
+            source: 'local'
+          };
+        }
+      } catch (error) {
+        updateLog.error(`读取本地临时文件失败: ${error.message}`);
+        // 删除损坏的文件
+        fs.unlinkSync(paths.temp.zip);
+        fs.unlinkSync(paths.temp.yml);
+      }
+    }
+
+    // 检查远程版本
+    updateLog.info('检查远程版本...');
+    const remoteYmlPath = path.join(tempDir, `remote_${Date.now()}.yml`);
+    await downloadFile(
+      curEnv,
+      curEnv.VUE_APP_PATH_YML_NAME,
+      remoteYmlPath
+    );
+
+    try {
+      const remoteYmlContent = fs.readFileSync(remoteYmlPath, 'utf8');
+      const remoteDoc = yaml.load(remoteYmlContent);
+      const { version: remoteVersion, releaseNotes } = remoteDoc;
+
+      if (remoteVersion && compareVersions(remoteVersion, latestVersion.version) > 0) {
+        updateLog.info(`发现更高版本的远程更新: v${remoteVersion}`);
+        latestVersion = {
+          version: remoteVersion,
+          releaseNotes,
+          source: 'remote',
+          ymlPath: remoteYmlPath
+        };
+      } else {
+        // 远程版本不是最新的，删除下载的远程yml
+        fs.unlinkSync(remoteYmlPath);
+      }
+    } catch (error) {
+      updateLog.error(`读取远程版本文件失败: ${error.message}`);
+      if (fs.existsSync(remoteYmlPath)) {
+        fs.unlinkSync(remoteYmlPath);
+      }
+    }
+
+    return latestVersion;
+  } catch (error) {
+    updateLog.error(`获取最新版本信息失败: ${error.message}`);
+    throw error;
+  }
+};
+
 // 检查更新
 const checkForUpdates = async (type) => {
   try {
+    updateLog.info('==================开始检查更新==================');
     const { curEnv } = await getUpdateConfig();
+    updateLog.info('已获取更新配置');
     
     if (!curEnv.VUE_APP_HOST_NAME || 
         !curEnv.VUE_APP_PATH_YML_NAME || 
         !curEnv.VUE_APP_UPDATE_ZIP_PATH_NAME) {
+      updateLog.error('更新配置不完整');
       throw new UpdateError('更新配置不完整', 'CONFIG_ERROR');
     }
 
     parseUrl(curEnv.VUE_APP_HOST_NAME);
-    
-    // 下载 latest.yml 到临时目录
-    await downloadFile(
-      curEnv,
-      curEnv.VUE_APP_PATH_YML_NAME,
-      paths.temp.yml
-    );
-    
-    const ymlContent = fs.readFileSync(paths.temp.yml, 'utf8');
-    const doc = yaml.load(ymlContent);
-    const { version, releaseNotes, sha512 } = doc;  // 直接从根级别获取 sha512
-        
-    console.log(sha512,'sha512')
-    if (!version) {
-      throw new UpdateError('无效的版本信息', 'INVALID_VERSION');
-    }
+    const currentVersion = app.getVersion();
+    updateLog.info(`当前版本: v${currentVersion}`);
 
-    const packageVersion = app.getVersion();
-    const needsUpdate = compareVersions(version, packageVersion) > 0;
+    // 获取最新版本信息
+    const latestVersion = await getLatestVersion(curEnv, currentVersion);
+    updateLog.info(`最新版本: v${latestVersion.version} (来源: ${latestVersion.source})`);
 
-    if (needsUpdate) {
-      const updateMsg = { flag: true, releaseNotes, updateVersion: version };
-      
-      try {
-        // 检查临时目录中是否已有更新包
-        if (fs.existsSync(paths.temp.zip)) {
-        //   const isValid = await verifyChecksum(paths.temp.zip, sha512);  // 使用根级别的 sha512
-        //   console.log(isValid, 'isValidisValid');
-        //   if (isValid) {
-            updateLog.info(`存在有效的更新包，直接更新`);
-            sendUpdateMessage("UpdatePartMsg", updateMsg);
-            return true;
-        //   }
-        }
-        
-        global.$notification.create("消息提示", "更新包正在下载中,请稍等...");
-        updateLog.info(`更新包正在下载中,请稍等...`);
-        
-        // 下载 resources.zip 到临时目录
-        await downloadFile(
-          curEnv,
-          curEnv.VUE_APP_UPDATE_ZIP_PATH_NAME,
-          paths.temp.zip,
-          updateMsg
-        );
-        
-      } catch (err) {
-        handleError(err);
-        return false;
+    if (latestVersion.source === 'current') {
+      if (type) {
+        global.$notification.create("消息提示", "暂无更新");
+        updateLog.info("当前已是最新版本");
       }
-    } else if (type) {
-      global.$notification.create("消息提示", "暂无更新");
-      updateLog.info("暂无更新");
+      updateLog.info('==================更新检查完成==================');
+      return false;
     }
 
-    return needsUpdate;
+    // 处理本地临时文件更新
+    if (latestVersion.source === 'local') {
+      updateLog.info('使用本地临时文件更新...');
+      sendUpdateMessage("UpdatePartMsg", {
+        flag: true,
+        releaseNotes: latestVersion.releaseNotes,
+        updateVersion: latestVersion.version
+      });
+      return true;
+    }
+
+    // 处理远程更新
+    if (latestVersion.source === 'remote') {
+      updateLog.info('开始下载远程更新...');
+      global.$notification.create("消息提示", "更新包正在下载中,请稍等...");
+
+      // 移动远程yml文件到临时文件位置
+      fs.renameSync(latestVersion.ymlPath, paths.temp.yml);
+
+      const updateMsg = {
+        flag: true,
+        releaseNotes: latestVersion.releaseNotes,
+        updateVersion: latestVersion.version
+      };
+
+      await downloadFile(
+        curEnv,
+        curEnv.VUE_APP_UPDATE_ZIP_PATH_NAME,
+        paths.temp.zip,
+        updateMsg
+      );
+      return true;
+    }
+
+    return false;
   } catch (error) {
+    updateLog.error(`检查更新失败: ${error.message}`);
     handleError(error);
     return false;
   }
@@ -464,7 +645,6 @@ const startInstallUpdate = async () => {
         global.$notification.create("提示", "更新过程中请勿关闭窗口");
       }
     });
-
     await installUpdate();
   } catch (error) {
     // 发生错误时恢复窗口可关闭状态
@@ -484,6 +664,7 @@ ipcMain.on("Sure", async () => {
 // 在 installUpdate 函数完成时设置 forceQuit
 const installUpdate = async () => {
   try {
+    updateLog.info('==================开始安装==================');
     // 0. 检查安装目录权限
     const permissionCheck = await checkDirectoryPermissions(installDir);
     console.log(permissionCheck, 'permissionCheck')
