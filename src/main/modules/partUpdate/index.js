@@ -363,6 +363,65 @@ const downloadFile = async (curEnv, filePath, fileName, updateMsg = null) => {
   }
 };
 
+// 下载并验证更新包
+const downloadAndVerifyUpdate = async (curEnv, remoteVersion, type = false) => {
+  let retryCount = 0;
+  const maxRetries = 3;
+
+  while (retryCount < maxRetries) {
+    try {
+      updateLog.info(`下载更新包 (尝试 ${retryCount + 1}/${maxRetries})...`);
+      await downloadFile(
+        curEnv,
+        curEnv.VUE_APP_UPDATE_ZIP_PATH_NAME,
+        paths.temp.zip
+      );
+
+      // 验证zip包版本
+      const zip = new admZip(paths.temp.zip);
+      const packageEntry = zip.getEntries().find(entry => 
+        entry.entryName === 'resources/app/package.json' || // 查找指定路径
+        entry.entryName === 'app/package.json'
+      );
+      const entryName = packageEntry ? packageEntry.entryName : null;
+      console.log('查找的包信息：', entryName, zip.getEntries().map(e => e.entryName));
+      
+      if (!packageEntry) {
+        throw new Error('更新包格式错误：未找到 resources/app/package.json');
+      }
+      
+      const packageContent = packageEntry.getData().toString('utf8');
+      const packageJson = JSON.parse(packageContent);
+      console.log('解析到的package.json：', packageJson);
+      
+      if (packageJson.version !== remoteVersion) {
+        throw new Error(`版本不匹配: YML版本 ${remoteVersion}, Package版本 ${packageJson.version}`);
+      }
+
+      updateLog.info('更新包验证通过');
+      return true;
+
+    } catch (error) {
+      updateLog.error(`更新包验证失败 (尝试 ${retryCount + 1}/${maxRetries}): ${error.message}`);
+      if (fs.existsSync(paths.temp.zip)) {
+        fs.unlinkSync(paths.temp.zip);
+      }
+      retryCount++;
+      
+      if (retryCount === maxRetries) {
+        updateLog.error('达到最大重试次数，放弃更新');
+        if (type) {
+          global.$notification.create("消息提示", "更新包下载失败，请稍后重试");
+        }
+        return false;
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+    }
+  }
+  return false;
+};
+
 // 创建备份
 const createBackup = async () => {
     try {
@@ -560,6 +619,14 @@ const checkForUpdates = async (type) => {
     const { curEnv } = await getUpdateConfig();
     updateLog.info('已获取更新配置');
     
+    // 清理临时文件
+    if (fs.existsSync(paths.temp.yml)) {
+      fs.unlinkSync(paths.temp.yml);
+    }
+    if (fs.existsSync(paths.temp.zip)) {
+      fs.unlinkSync(paths.temp.zip);
+    }
+    
     if (!curEnv.VUE_APP_HOST_NAME || 
         !curEnv.VUE_APP_PATH_YML_NAME || 
         !curEnv.VUE_APP_UPDATE_ZIP_PATH_NAME) {
@@ -571,54 +638,51 @@ const checkForUpdates = async (type) => {
     const currentVersion = app.getVersion();
     updateLog.info(`当前版本: v${currentVersion}`);
 
-    // 获取最新版本信息
-    const latestVersion = await getLatestVersion(curEnv, currentVersion);
-    updateLog.info(`最新版本: v${latestVersion.version} (来源: ${latestVersion.source})`);
+    // 下载并检查远程yml
+    updateLog.info('检查远程版本...');
+    const remoteYmlPath = path.join(tempDir, 'latest.yml');
+    await downloadFile(
+      curEnv,
+      curEnv.VUE_APP_PATH_YML_NAME,
+      remoteYmlPath
+    );
 
-    if (latestVersion.source === 'current') {
+    // 读取远程版本信息
+    const ymlContent = fs.readFileSync(remoteYmlPath, 'utf8');
+    const ymlDoc = yaml.load(ymlContent);
+    const remoteVersion = ymlDoc.version;
+    
+    updateLog.info(`远程版本: v${remoteVersion}`);
+
+    // 比较版本
+    if (!remoteVersion || compareVersions(remoteVersion, currentVersion) <= 0) {
+      updateLog.info('当前已是最新版本');
+      fs.unlinkSync(remoteYmlPath);
       if (type) {
         global.$notification.create("消息提示", "暂无更新");
-        updateLog.info("当前已是最新版本");
       }
-      updateLog.info('==================更新检查完成==================');
       return false;
     }
 
-    // 处理本地临时文件更新
-    if (latestVersion.source === 'local') {
-      updateLog.info('使用本地临时文件更新...');
+    // 发现新版本，下载并验证
+    updateLog.info(`发现新版本: v${remoteVersion}`);
+    global.$notification.create("消息提示", "更新包正在下载中,请稍等...");
+
+    if (await downloadAndVerifyUpdate(curEnv, remoteVersion, type)) {
+      // 验证通过，移动yml到临时目录
+      fs.renameSync(remoteYmlPath, paths.temp.yml);
       sendUpdateMessage("UpdatePartMsg", {
         flag: true,
-        releaseNotes: latestVersion.releaseNotes,
-        updateVersion: latestVersion.version
+        releaseNotes: ymlDoc.releaseNotes,
+        updateVersion: remoteVersion
       });
       return true;
+    } else {
+      // 验证失败，清理yml
+      fs.unlinkSync(remoteYmlPath);
+      return false;
     }
 
-    // 处理远程更新
-    if (latestVersion.source === 'remote') {
-      updateLog.info('开始下载远程更新...');
-      global.$notification.create("消息提示", "更新包正在下载中,请稍等...");
-
-      // 移动远程yml文件到临时文件位置
-      fs.renameSync(latestVersion.ymlPath, paths.temp.yml);
-
-      const updateMsg = {
-        flag: true,
-        releaseNotes: latestVersion.releaseNotes,
-        updateVersion: latestVersion.version
-      };
-
-      await downloadFile(
-        curEnv,
-        curEnv.VUE_APP_UPDATE_ZIP_PATH_NAME,
-        paths.temp.zip,
-        updateMsg
-      );
-      return true;
-    }
-
-    return false;
   } catch (error) {
     updateLog.error(`检查更新失败: ${error.message}`);
     handleError(error);
