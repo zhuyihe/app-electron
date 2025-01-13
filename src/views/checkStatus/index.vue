@@ -197,9 +197,24 @@ export default {
     },
 
     // 确认更新
-    confirmpartUpdate() {
-      this.isPartUpdatte = true;
-      ipcRenderer.send("Sure");
+    async confirmpartUpdate() {
+      try {
+        // 重新检查更新状态
+        const { flag } = await ipcRenderer.invoke("recheck_update");
+        if (!flag) {
+          this.$message.error("补丁状态发生变更，请重新检查更新");
+          this.dartdialogVisible = false;
+          this.isPartUpdatte = false;
+          return;
+        }
+        
+        this.isPartUpdatte = true;
+        ipcRenderer.send("Sure");
+      } catch (error) {
+        this.$message.error("更新检查失败，请重试");
+        this.dartdialogVisible = false;
+        this.isPartUpdatte = false;
+      }
     },
 
     // 获取打印机列表状态

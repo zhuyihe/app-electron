@@ -185,7 +185,7 @@ const verifyChecksum = async (filePath, expectedHash) => {
         });
   
         stream.on('end', () => {
-          const actualHash = hash.digest('base64');
+          const actualHash= hash.digest('base64');
           updateLog.info('计算得到的哈希值:', actualHash);
           updateLog.info('预期的哈希值:', expectedHash);
           resolve(actualHash === expectedHash);
@@ -213,7 +213,7 @@ const downloadFile = async (curEnv, filePath, fileName, updateMsg = null) => {
     updateLog.info(`目标文件: ${fileName}`);
     updateLog.info(`使用协议: ${protocol}`);
 
-    const axiosConfig = {
+    const axiosConfig = { 
       url,
       method: 'GET',
       responseType: 'stream',
@@ -367,7 +367,7 @@ const downloadFile = async (curEnv, filePath, fileName, updateMsg = null) => {
 const downloadAndVerifyUpdate = async (curEnv, remoteVersion, type = false) => {
   let retryCount = 0;
   const maxRetries = 3;
-
+  
   while (retryCount < maxRetries) {
     try {
       updateLog.info(`下载更新包 (尝试 ${retryCount + 1}/${maxRetries})...`);
@@ -377,32 +377,30 @@ const downloadAndVerifyUpdate = async (curEnv, remoteVersion, type = false) => {
         paths.temp.zip
       );
 
-      // 验证zip包版本
-      const zip = new admZip(paths.temp.zip);
-      const packageEntry = zip.getEntries().find(entry => 
-        entry.entryName === 'resources/app/package.json' || // 查找指定路径
-        entry.entryName === 'app/package.json'
-      );
-      const entryName = packageEntry ? packageEntry.entryName : null;
-      console.log('查找的包信息：', entryName, zip.getEntries().map(e => e.entryName));
-      
-      if (!packageEntry) {
-        throw new Error('更新包格式错误：未找到 resources/app/package.json');
-      }
-      
-      const packageContent = packageEntry.getData().toString('utf8');
-      const packageJson = JSON.parse(packageContent);
-      console.log('解析到的package.json：', packageJson);
-      
-      if (packageJson.version !== remoteVersion) {
-        throw new Error(`版本不匹配: YML版本 ${remoteVersion}, Package版本 ${packageJson.version}`);
+      // 验证更新包
+      updateLog.info('验证更新包...');
+      if (await verifyUpdatePackage()) {
+        updateLog.info('更新包验证通过');
+        return true;
       }
 
-      updateLog.info('更新包验证通过');
-      return true;
-
+      // 验证失败，删除zip包并重试
+      if (fs.existsSync(paths.temp.zip)) {
+        fs.unlinkSync(paths.temp.zip);
+      }
+      retryCount++;
+      
+      if (retryCount === maxRetries) {
+        updateLog.error('达到最大重试次数，放弃更新');
+        if (type) {
+          global.$notification.create("消息提示", "更新包下载失败，请稍后重试");
+        }
+        return false;
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
     } catch (error) {
-      updateLog.error(`更新包验证失败 (尝试 ${retryCount + 1}/${maxRetries}): ${error.message}`);
+      updateLog.error(`更新包下载失败 (尝试 ${retryCount + 1}/${maxRetries}): ${error.message}`);
       if (fs.existsSync(paths.temp.zip)) {
         fs.unlinkSync(paths.temp.zip);
       }
@@ -420,6 +418,53 @@ const downloadAndVerifyUpdate = async (curEnv, remoteVersion, type = false) => {
     }
   }
   return false;
+};
+  
+// 验证更新包版本
+const verifyUpdatePackage = async () => {
+  try {
+    // 验证临时文件是否存在
+    if (!fs.existsSync(paths.temp.yml) || !fs.existsSync(paths.temp.zip)) {
+      updateLog.error('更新文件已失效，请重新检查更新');
+      return false;
+    }
+
+    // 读取 yml 文件获取版本信息
+    const ymlContent = fs.readFileSync(paths.temp.yml, 'utf8');
+    const ymlDoc = yaml.load(ymlContent);
+    const ymlVersion = ymlDoc.version;
+
+    if (!ymlVersion) {
+      updateLog.error('YML文件格式错误');
+      return false;
+    }
+
+    // 验证 zip 包中的版本
+    const zip = new admZip(paths.temp.zip);
+    const packageEntry = zip.getEntries().find(entry => 
+      entry.entryName === 'resources/app/package.json' || 
+      entry.entryName === 'app/package.json'
+    );
+
+    if (!packageEntry) {
+      updateLog.error('更新包格式错误：未找到package.json');
+      return false;
+    }
+
+    const packageContent = packageEntry.getData().toString('utf8');
+    const packageJson = JSON.parse(packageContent);
+    
+    // 比较版本是否一致
+    if (packageJson.version !== ymlVersion) {
+      updateLog.error(`版本不匹配: YML版本 ${ymlVersion}, Package版本 ${packageJson.version}`);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    updateLog.error(`验证更新包失败: ${error.message}`);
+    return false;
+  }
 };
 
 // 创建备份
@@ -685,7 +730,7 @@ const checkForUpdates = async (type) => {
 
   } catch (error) {
     updateLog.error(`检查更新失败: ${error.message}`);
-    handleError(error);
+    // handleError(error);
     return false;
   }
 };
@@ -723,6 +768,12 @@ const startInstallUpdate = async () => {
 // 修改 ipcMain 事件监听
 ipcMain.on("Sure", async () => {
   await startInstallUpdate();
+});
+
+// 添加重新检查更新的处理
+ipcMain.handle("recheck_update", async () => {
+  const isValid = await verifyUpdatePackage();
+  return { flag: isValid };
 });
 
 // 在 installUpdate 函数完成时设置 forceQuit
