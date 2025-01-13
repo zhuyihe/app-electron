@@ -183,7 +183,7 @@ export const executePermissionScript = async (installDir) => {
             timeoutHandle = setTimeout(() => {
                 watcher.close();
                 reject(new Error('等待权限文件超时'));
-            }, 10000);
+            }, 30000);
 
             // 确保在所有情况下都能清除超时和关闭监听器
             const cleanup = () => {
